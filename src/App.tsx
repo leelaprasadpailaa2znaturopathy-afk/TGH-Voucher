@@ -56,7 +56,7 @@ type VoucherLayout = {
 const STORAGE_KEY = 'the_good_health_vouchers';
 const LEGACY_AUDIT_KEY = 'the_good_health_audit';
 const RUPEE = '\u20b9';
-const VOUCHER_FONT_FAMILY = 'Manrope, sans-serif';
+const VOUCHER_FONT_FAMILY = 'Inter, sans-serif';
 const PDF_MAX_RENDER_WIDTH = 1800;
 const PDF_IMAGE_QUALITY = 0.76;
 
