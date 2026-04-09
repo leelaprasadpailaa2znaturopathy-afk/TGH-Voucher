@@ -67,8 +67,8 @@ const STORAGE_KEY = 'the_good_health_vouchers';
 const AUDIT_KEY = 'the_good_health_audit';
 const RUPEE = '\u20b9';
 const VOUCHER_FONT_FAMILY = 'Manrope, sans-serif';
-const PDF_MAX_RENDER_WIDTH = 2200;
-const PDF_IMAGE_QUALITY = 0.72;
+const PDF_MAX_RENDER_WIDTH = 1280;
+const PDF_IMAGE_QUALITY = 0.5;
 
 // Manual text-position controls for each voucher template.
 // If you want to fine-tune alignment, update only the numbers in `voucher1k`.
@@ -257,6 +257,8 @@ const buildVoucherPdf = (
   pdfCanvas.height = pdfHeight;
   const pdfCtx = pdfCanvas.getContext('2d');
   if (pdfCtx) {
+    pdfCtx.fillStyle = '#ffffff';
+    pdfCtx.fillRect(0, 0, pdfWidth, pdfHeight);
     pdfCtx.drawImage(canvas, 0, 0, pdfWidth, pdfHeight);
   }
   const pdf = new jsPDF({
