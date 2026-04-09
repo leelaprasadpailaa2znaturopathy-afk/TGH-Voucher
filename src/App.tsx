@@ -4,6 +4,7 @@ import { jsPDF } from 'jspdf';
 import JSZip from 'jszip';
 import Papa from 'papaparse';
 import templateUrl from './Voucher ID Template TGH (1).png';
+import template1kUrl from './Voucher 1k.png';
 
 type View = 'dashboard' | 'generate' | 'bulk' | 'audit';
 type Status = 'Active' | 'Redeemed';
@@ -37,9 +38,99 @@ type Draft = {
   expiryDate: string;
 };
 
+type BulkFormat = 'png' | 'pdf';
+type TemplateKey = 'default' | 'voucher1k';
+type TemplateMap = Record<TemplateKey, HTMLImageElement>;
+type VoucherTextStyle = {
+  fontSize: number;
+  fontWeight: string;
+  fontFamily: string;
+  color: string;
+};
+type VoucherLayout = {
+  referenceWidth: number;
+  referenceHeight: number;
+  amountStyle: VoucherTextStyle;
+  voucherIdStyle: VoucherTextStyle;
+  dateStyle: VoucherTextStyle;
+  amountX: number;
+  amountY: number;
+  voucherIdX: number;
+  voucherIdY: number;
+  issuedDateX: number;
+  issuedDateY: number;
+  expiryDateX: number;
+  expiryDateY: number;
+};
+
 const STORAGE_KEY = 'the_good_health_vouchers';
 const AUDIT_KEY = 'the_good_health_audit';
 const RUPEE = '\u20b9';
+
+// Manual text-position controls for each voucher template.
+// If you want to fine-tune alignment, update only the numbers in `voucher1k`.
+const VOUCHER_LAYOUTS: Record<TemplateKey, VoucherLayout> = {
+  default: {
+    referenceWidth: 1200,
+    referenceHeight: 400,
+    amountStyle: {
+      fontSize: 32,
+      fontWeight: '800',
+      fontFamily: 'Inter, sans-serif',
+      color: 'rgba(254, 253, 225, 1)',
+    },
+    voucherIdStyle: {
+      fontSize: 30,
+      fontWeight: 'bold',
+      fontFamily: 'Inter, sans-serif',
+      color: '#003321',
+    },
+    dateStyle: {
+      fontSize: 22,
+      fontWeight: 'bold',
+      fontFamily: 'Inter, sans-serif',
+      color: '#003321',
+    },
+    amountX: 720,
+    amountY: 180,
+    voucherIdX: 665,
+    voucherIdY: 258,
+    issuedDateX: 680,
+    issuedDateY: 302,
+    expiryDateX: 680,
+    expiryDateY: 335,
+  },
+  voucher1k: {
+    referenceWidth: 5500,
+    referenceHeight: 3900,
+    amountStyle: {
+      fontSize: 200 ,
+      fontWeight: '1000',
+      fontFamily: 'Inter, sans-serif',
+      color: 'rgb(255, 255, 255)',
+    },
+    voucherIdStyle: {
+      fontSize: 180,
+      fontWeight: 'bold',
+      fontFamily: 'Inter, sans-serif',
+      color: '#003321',
+    },
+    dateStyle: {
+      fontSize: 125,
+      fontWeight: 'bold',
+      fontFamily: 'Inter, sans-serif',
+      color: '#003321',
+    },
+    amountX: 2500,
+    amountY: 2150,
+    voucherIdX: 2485,
+    voucherIdY: 2895,
+    issuedDateX: 2160,
+    issuedDateY: 3210,
+    expiryDateX: 4345,
+    expiryDateY: 3210,
+  },
+};
 
 const readJson = <T,>(key: string, fallback: T): T => {
   try {
@@ -62,31 +153,107 @@ const loadTemplate = (src: string) =>
     image.src = src;
   });
 
-const drawVoucher = (canvas: HTMLCanvasElement, image: HTMLImageElement, data: Partial<Voucher | Draft>) => {
+const getAmountValue = (amount?: string) => Number.parseFloat(amount ?? '') || 0;
+
+const getTemplateKey = (amount?: string): TemplateKey => {
+  const value = getAmountValue(amount);
+  return value >= 1000 && value <= 9999 ? 'voucher1k' : 'default';
+};
+
+const getVoucherLayout = (templateKey: TemplateKey, image: HTMLImageElement): VoucherLayout => {
+  const layout = VOUCHER_LAYOUTS[templateKey];
+  const scaleX = image.width / layout.referenceWidth;
+  const scaleY = image.height / layout.referenceHeight;
+  return {
+    ...layout,
+    amountStyle: {
+      ...layout.amountStyle,
+      fontSize: layout.amountStyle.fontSize * scaleX,
+    },
+    voucherIdStyle: {
+      ...layout.voucherIdStyle,
+      fontSize: layout.voucherIdStyle.fontSize * scaleX,
+    },
+    dateStyle: {
+      ...layout.dateStyle,
+      fontSize: layout.dateStyle.fontSize * scaleX,
+    },
+    amountX: layout.amountX * scaleX,
+    amountY: layout.amountY * scaleY,
+    voucherIdX: layout.voucherIdX * scaleX,
+    voucherIdY: layout.voucherIdY * scaleY,
+    issuedDateX: layout.issuedDateX * scaleX,
+    issuedDateY: layout.issuedDateY * scaleY,
+    expiryDateX: layout.expiryDateX * scaleX,
+    expiryDateY: layout.expiryDateY * scaleY,
+  };
+};
+
+const drawVoucher = (
+  canvas: HTMLCanvasElement,
+  image: HTMLImageElement,
+  data: Partial<Voucher | Draft>,
+  templateKey: TemplateKey,
+  options?: { includeVoucherId?: boolean },
+) => {
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
+  const layout = getVoucherLayout(templateKey, image);
+  const includeVoucherId = options?.includeVoucherId ?? true;
   canvas.width = image.width;
   canvas.height = image.height;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.drawImage(image, 0, 0);
   ctx.textBaseline = 'middle';
   ctx.textAlign = 'left';
-  if (data.voucherId) {
-    ctx.font = 'bold 110px Inter, sans-serif';
-    ctx.fillStyle = '#003321';
-    ctx.fillText(data.voucherId, (canvas.width * 720) / 1200, (canvas.height * 258) / 400);
+  if (includeVoucherId && data.voucherId) {
+    ctx.font = `${layout.voucherIdStyle.fontWeight} ${layout.voucherIdStyle.fontSize}px ${layout.voucherIdStyle.fontFamily}`;
+    ctx.fillStyle = layout.voucherIdStyle.color;
+    ctx.fillText(data.voucherId, layout.voucherIdX, layout.voucherIdY);
   }
   if (data.amount) {
-    ctx.font = '900 160px Inter, sans-serif';
-    ctx.fillStyle = 'rgba(254, 253, 225)';
+    ctx.font = `${layout.amountStyle.fontWeight} ${layout.amountStyle.fontSize}px ${layout.amountStyle.fontFamily}`;
+    ctx.fillStyle = layout.amountStyle.color;
     ctx.textAlign = 'center';
-    ctx.fillText(data.amount, (canvas.width * 720) / 1200, (canvas.height * 180) / 400);
+    ctx.fillText(data.amount, layout.amountX, layout.amountY);
     ctx.textAlign = 'left';
   }
-  ctx.font = 'bold 90px Inter, sans-serif';
-  ctx.fillStyle = '#003321';
-  if (data.issuedDate) ctx.fillText(data.issuedDate, (canvas.width * 720) / 1200, (canvas.height * 302) / 400);
-  if (data.expiryDate) ctx.fillText(data.expiryDate, (canvas.width * 720) / 1200, (canvas.height * 335) / 400);
+  ctx.font = `${layout.dateStyle.fontWeight} ${layout.dateStyle.fontSize}px ${layout.dateStyle.fontFamily}`;
+  ctx.fillStyle = layout.dateStyle.color;
+  if (data.issuedDate) ctx.fillText(data.issuedDate, layout.issuedDateX, layout.issuedDateY);
+  if (data.expiryDate) ctx.fillText(data.expiryDate, layout.expiryDateX, layout.expiryDateY);
+};
+
+const downloadTextFile = (fileName: string, text: string) => {
+  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  link.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+};
+
+const buildVoucherPdf = (
+  canvas: HTMLCanvasElement,
+  voucherData?: Partial<Voucher | Draft>,
+  layout?: VoucherLayout,
+) => {
+  const pdf = new jsPDF({
+    orientation: 'landscape',
+    unit: 'px',
+    format: [canvas.width, canvas.height],
+  });
+  pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, canvas.width, canvas.height);
+  if (voucherData?.voucherId && layout) {
+    pdf.setTextColor(0, 51, 33);
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(layout.voucherIdStyle.fontSize);
+    pdf.text(voucherData.voucherId, layout.voucherIdX, layout.voucherIdY, {
+      baseline: 'middle',
+    });
+  }
+  return pdf;
 };
 
 const badgeClass = (status: Status | AuditStatus) =>
@@ -100,13 +267,15 @@ const buttonClass =
 export default function App() {
   const [view, setView] = useState<View>('dashboard');
   const [query, setQuery] = useState('');
-  const [previewZoom, setPreviewZoom] = useState(100);
+  const [previewZoom, setPreviewZoom] = useState(135);
   const [vouchers, setVouchers] = useState<Voucher[]>(() => readJson(STORAGE_KEY, []));
   const [logs, setLogs] = useState<AuditLog[]>(() => readJson(AUDIT_KEY, []));
-  const [template, setTemplate] = useState<HTMLImageElement | null>(null);
+  const [templates, setTemplates] = useState<TemplateMap | null>(null);
   const [templateError, setTemplateError] = useState('');
   const [amountError, setAmountError] = useState('');
   const [lastGenerated, setLastGenerated] = useState('');
+  const [copyStatus, setCopyStatus] = useState('');
+  const [bulkFormat, setBulkFormat] = useState<BulkFormat>('png');
   const [confirm, setConfirm] = useState<{ title: string; message: string; action: () => void } | null>(null);
   const [bulk, setBulk] = useState({ visible: false, processed: 0, total: 0, percent: 0, status: 'Preparing...' });
   const [draft, setDraft] = useState<Draft>({
@@ -117,6 +286,8 @@ export default function App() {
     expiryDate: inThirtyDays(),
   });
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const previewViewportRef = useRef<HTMLDivElement | null>(null);
+  const activePreviewTemplateKey = getTemplateKey(draft.amount);
 
   useEffect(() => {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(vouchers));
@@ -128,9 +299,14 @@ export default function App() {
 
   useEffect(() => {
     let active = true;
-    loadTemplate(templateUrl)
-      .then((image) => {
-        if (active) setTemplate(image);
+    Promise.all([loadTemplate(templateUrl), loadTemplate(template1kUrl)])
+      .then(([defaultTemplate, voucher1kTemplate]) => {
+        if (active) {
+          setTemplates({
+            default: defaultTemplate,
+            voucher1k: voucher1kTemplate,
+          });
+        }
       })
       .catch((error: Error) => {
         if (active) setTemplateError(error.message);
@@ -141,8 +317,25 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (template && canvasRef.current) drawVoucher(canvasRef.current, template, draft);
-  }, [draft, template]);
+    if (!templates || !canvasRef.current) return;
+    drawVoucher(canvasRef.current, templates[activePreviewTemplateKey], draft, activePreviewTemplateKey);
+  }, [draft, templates]);
+
+  useEffect(() => {
+    const viewport = previewViewportRef.current;
+    if (!viewport || view !== 'generate') return;
+
+    const frame = window.requestAnimationFrame(() => {
+      const maxScrollLeft = Math.max(0, viewport.scrollWidth - viewport.clientWidth);
+      if (!maxScrollLeft) return;
+      viewport.scrollTo({
+        left: Math.min(maxScrollLeft, maxScrollLeft * 0.55),
+        behavior: 'auto',
+      });
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [activePreviewTemplateKey, templates, view]);
 
   const addLog = (action: string, resource: string, status: AuditStatus = 'Success') => {
     setLogs((current) => [
@@ -169,23 +362,60 @@ export default function App() {
     return { total: vouchers.length, redeemed, active: vouchers.length - redeemed, totalValue };
   }, [vouchers]);
 
-  const makeCanvas = (data: Partial<Voucher | Draft>) => {
+  const getTemplateForAmount = (amount?: string) => (templates ? templates[getTemplateKey(amount)] : null);
+  const previewCanvasWidth = useMemo(() => {
+    const baseWidth = activePreviewTemplateKey === 'voucher1k' ? 1050 : 1200;
+    return Math.round((baseWidth * previewZoom) / 100);
+  }, [activePreviewTemplateKey, previewZoom]);
+
+  const makeCanvas = (data: Partial<Voucher | Draft>, options?: { includeVoucherId?: boolean }) => {
+    const templateKey = getTemplateKey(data.amount);
+    const template = getTemplateForAmount(data.amount);
     if (!template) return null;
     const canvas = document.createElement('canvas');
-    drawVoucher(canvas, template, data);
+    drawVoucher(canvas, template, data, templateKey, options);
     return canvas;
   };
 
-  const downloadCanvas = (canvas: HTMLCanvasElement, fileName: string, format: 'png' | 'pdf') => {
+  const copyVoucherIds = async (voucherIds: string[]) => {
+    if (!voucherIds.length || !navigator.clipboard?.writeText) return false;
+    try {
+      await navigator.clipboard.writeText(voucherIds.join('\n'));
+      setCopyStatus(voucherIds.length === 1 ? `Voucher ID copied: ${voucherIds[0]}` : `${voucherIds.length} voucher IDs copied`);
+      window.setTimeout(() => setCopyStatus(''), 2500);
+      return true;
+    } catch {
+      setCopyStatus('Voucher ID copy was blocked by the browser');
+      window.setTimeout(() => setCopyStatus(''), 3000);
+      return false;
+    }
+  };
+
+  const downloadCanvas = async (
+    canvas: HTMLCanvasElement,
+    fileName: string,
+    format: 'png' | 'pdf',
+    voucherIds: string[] = [],
+    voucherData?: Partial<Voucher | Draft>,
+  ) => {
     if (format === 'png') {
+      if (voucherIds.length === 1) {
+        await copyVoucherIds(voucherIds);
+        downloadTextFile(fileName.replace(/\.png$/i, '-voucher-id.txt'), `Voucher ID: ${voucherIds[0]}`);
+      } else {
+        await copyVoucherIds(voucherIds);
+      }
       const link = document.createElement('a');
       link.download = fileName;
       link.href = canvas.toDataURL('image/png');
       link.click();
       return;
     }
-    const pdf = new jsPDF({ orientation: 'landscape', unit: 'px', format: [canvas.width, canvas.height] });
-    pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, canvas.width, canvas.height);
+    await copyVoucherIds(voucherIds);
+    const template = voucherData ? getTemplateForAmount(voucherData.amount) : null;
+    const templateKey = voucherData ? getTemplateKey(voucherData.amount) : null;
+    const layout = template && templateKey ? getVoucherLayout(templateKey, template) : undefined;
+    const pdf = buildVoucherPdf(canvas, voucherData, layout);
     pdf.save(fileName);
   };
 
@@ -211,16 +441,16 @@ export default function App() {
     addLog('Generate Voucher', voucher.voucherId);
   };
 
-  const downloadVoucher = (voucher: Voucher, format: 'png' | 'pdf') => {
-    const canvas = makeCanvas(voucher);
+  const downloadVoucher = async (voucher: Voucher, format: 'png' | 'pdf') => {
+    const canvas = makeCanvas(voucher, { includeVoucherId: format !== 'pdf' });
     if (!canvas) return;
-    downloadCanvas(canvas, `${voucher.orderId}.${format}`, format);
+    await downloadCanvas(canvas, `${voucher.orderId}.${format}`, format, [voucher.voucherId], voucher);
     addLog(`Download ${format.toUpperCase()}`, voucher.voucherId);
   };
 
-  const downloadCurrent = (format: 'png' | 'pdf') => {
+  const downloadCurrent = async (format: 'png' | 'pdf') => {
     const voucher = vouchers.find((item) => item.id === lastGenerated);
-    if (voucher) downloadVoucher(voucher, format);
+    if (voucher) await downloadVoucher(voucher, format);
   };
 
   const exportCsv = () => {
@@ -245,8 +475,8 @@ export default function App() {
     URL.revokeObjectURL(url);
   };
 
-  const bulkUpload = async (file: File) => {
-    if (!template) return;
+  const bulkUpload = async (file: File, format: BulkFormat) => {
+    if (!templates) return;
     setBulk({ visible: true, processed: 0, total: 0, percent: 0, status: 'Reading CSV...' });
     const parsed = await new Promise<Papa.ParseResult<Record<string, string>>>((resolve, reject) => {
       Papa.parse<Record<string, string>>(file, { header: true, skipEmptyLines: true, complete: resolve, error: reject });
@@ -267,29 +497,40 @@ export default function App() {
         createdAt: new Date().toISOString(),
       };
       generated.push(voucher);
+      const templateKey = getTemplateKey(voucher.amount);
+      const template = getTemplateForAmount(voucher.amount);
+      if (!template) continue;
       const canvas = document.createElement('canvas');
-      drawVoucher(canvas, template, voucher);
-      zip.file(`${voucher.orderId}.png`, canvas.toDataURL('image/png').split(',')[1], { base64: true });
+      drawVoucher(canvas, template, voucher, templateKey, { includeVoucherId: format !== 'pdf' });
+      if (format === 'png') {
+        zip.file(`${voucher.orderId}.png`, canvas.toDataURL('image/png').split(',')[1], { base64: true });
+        zip.file(`${voucher.orderId}-voucher-id.txt`, `Voucher ID: ${voucher.voucherId}`);
+      } else {
+        const layout = getVoucherLayout(templateKey, template);
+        const pdf = buildVoucherPdf(canvas, voucher, layout);
+        zip.file(`${voucher.orderId}.pdf`, pdf.output('arraybuffer'));
+      }
       const processed = i + 1;
       setBulk({
         visible: true,
         processed,
         total: rows.length,
         percent: rows.length ? Math.round((processed / rows.length) * 100) : 0,
-        status: 'Generating vouchers...',
+        status: `Generating ${format.toUpperCase()} vouchers...`,
       });
       if (i % 10 === 0) await new Promise((resolve) => setTimeout(resolve, 0));
     }
     setVouchers((current) => [...current, ...generated]);
-    addLog('Bulk Generate', `${generated.length} Vouchers`);
+    addLog(`Bulk Generate ${format.toUpperCase()}`, `${generated.length} Vouchers`);
     setBulk((current) => ({ ...current, status: 'Packaging ZIP...' }));
     const content = await zip.generateAsync({ type: 'blob' });
     const url = URL.createObjectURL(content);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `vouchers_batch_${Date.now()}.zip`;
+    link.download = `vouchers_batch_${format}_${Date.now()}.zip`;
     link.click();
     URL.revokeObjectURL(url);
+    await copyVoucherIds(generated.map((voucher) => voucher.voucherId));
     setBulk({ visible: true, processed: rows.length, total: rows.length, percent: 100, status: 'Batch complete!' });
     window.setTimeout(() => setBulk((current) => ({ ...current, visible: false })), 3000);
   };
@@ -442,13 +683,13 @@ export default function App() {
             </div>
           ) : null}
           {view === 'generate' ? (
-            <div className="mx-auto grid max-w-[1500px] grid-cols-1 gap-6 xl:grid-cols-[minmax(360px,430px)_minmax(0,1fr)] xl:items-start">
+            <div className="mx-auto grid max-w-[1800px] grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1.4fr)_minmax(380px,0.85fr)] xl:items-start">
               <div className="order-1 space-y-5 xl:sticky xl:top-6">
                 <div className="slider-surface rounded-[28px] border border-[#003321]/10 bg-white p-5 shadow-xl md:p-6 xl:min-h-[calc(100vh-10rem)]">
                   <div className="flex flex-wrap items-center justify-between gap-4">
                     <div>
                       <h2 className="text-3xl font-black tracking-tight">Live Preview</h2>
-                      <p className="mt-2 text-sm text-[#003321]/60">The preview now stays in a wide landscape frame so the rectangular voucher is easier to edit.</p>
+                      <p className="mt-2 text-sm text-[#003321]/60">The preview opens zoomed into the right side so the voucher ID area is visible first, and you can scroll across the layout smoothly.</p>
                     </div>
                     <div className="min-w-[220px] flex-1 md:max-w-xs">
                       <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-widest text-[#003321]/50">
@@ -457,29 +698,33 @@ export default function App() {
                       </div>
                       <input
                         className="preview-slider mt-3 w-full"
-                        max="180"
-                        min="80"
+                        max="220"
+                        min="100"
                         onChange={(event) => setPreviewZoom(Number(event.target.value))}
                         type="range"
                         value={previewZoom}
                       />
                     </div>
                   </div>
-                  <div className="relative mt-6 aspect-[12/4] min-h-[240px] w-full overflow-auto rounded-[24px] border border-[#003321]/10 bg-[linear-gradient(135deg,rgba(211,0,0,0.05),rgba(0,51,33,0.04))] p-3 md:min-h-[320px] lg:min-h-[380px] xl:min-h-[460px]">
-                    <div className="flex h-full min-h-full min-w-full items-center justify-center">
+                  <div
+                    ref={previewViewportRef}
+                    className="relative mt-6 aspect-[12/4] min-h-[300px] w-full overflow-x-auto overflow-y-auto rounded-[24px] border border-[#003321]/10 bg-[linear-gradient(135deg,rgba(211,0,0,0.05),rgba(0,51,33,0.04))] p-4 md:min-h-[420px] lg:min-h-[520px] xl:min-h-[640px]"
+                  >
+                    <div className="flex min-h-full min-w-max items-center justify-center">
                       <canvas
                         ref={canvasRef}
                         className="mx-auto block h-auto max-w-none rounded-2xl shadow-2xl"
-                        style={{ width: `${previewZoom}%`, minWidth: '100%', maxWidth: '1400px' }}
+                        style={{ width: `${previewCanvasWidth}px`, minWidth: `${previewCanvasWidth}px`, maxWidth: 'none' }}
                       />
                     </div>
-                    {!template ? (
+                    {!templates ? (
                       <div className="absolute inset-0 flex items-center justify-center bg-white/80 text-[10px] font-bold uppercase tracking-widest text-[#003321]/40">
                         Loading Template...
                       </div>
                     ) : null}
                   </div>
                   {templateError ? <p className="mt-4 text-sm text-[#D30000]">{templateError}</p> : null}
+                  {copyStatus ? <p className="mt-4 text-[11px] font-bold uppercase tracking-widest text-[#003321]/60">{copyStatus}</p> : null}
                   <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <button className={`${buttonClass} ${lastGenerated ? '' : 'cursor-not-allowed opacity-50'}`} disabled={!lastGenerated} onClick={() => downloadCurrent('png')} type="button">Download PNG</button>
                     <button className={`${buttonClass} ${lastGenerated ? '' : 'cursor-not-allowed opacity-50'}`} disabled={!lastGenerated} onClick={() => downloadCurrent('pdf')} type="button">Download PDF</button>
@@ -501,7 +746,17 @@ export default function App() {
                 </div>
                 <div className="flex gap-4">
                   <button className="flex-1 rounded-xl bg-[#003321] px-6 py-4 text-xs font-bold uppercase tracking-widest text-white" type="submit">Generate Voucher</button>
-                  <button className={buttonClass} onClick={() => template && canvasRef.current && drawVoucher(canvasRef.current, template, draft)} type="button">Preview</button>
+                  <button
+                    className={buttonClass}
+                    onClick={() => {
+                      const templateKey = getTemplateKey(draft.amount);
+                      const template = getTemplateForAmount(draft.amount);
+                      if (template && canvasRef.current) drawVoucher(canvasRef.current, template, draft, templateKey);
+                    }}
+                    type="button"
+                  >
+                    Preview
+                  </button>
                 </div>
               </form>
             </div>
@@ -510,15 +765,42 @@ export default function App() {
             <div className="mx-auto max-w-4xl space-y-10">
               <div>
                 <h2 className="text-3xl font-black tracking-tight">Bulk Operations</h2>
-                <p className="mt-2 text-sm text-[#003321]/60">Upload a CSV file to generate vouchers and package them into a ZIP.</p>
+                <p className="mt-2 text-sm text-[#003321]/60">Upload a CSV file, choose PNG or PDF, and download a ZIP while copying the voucher IDs automatically.</p>
               </div>
               <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
                 <div className="space-y-6 lg:col-span-2">
+                  <div className="rounded-3xl border border-[#003321]/10 bg-white p-4 shadow-sm">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-[#003321]/40">Bulk Download Format</p>
+                    <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <button
+                        className={`rounded-xl border px-4 py-3 text-xs font-bold uppercase tracking-widest transition ${
+                          bulkFormat === 'png'
+                            ? 'border-[#003321] bg-[#003321] text-white'
+                            : 'border-[#003321]/10 bg-white text-[#003321] hover:bg-[#FDFBF7]'
+                        }`}
+                        onClick={() => setBulkFormat('png')}
+                        type="button"
+                      >
+                        ZIP as PNG
+                      </button>
+                      <button
+                        className={`rounded-xl border px-4 py-3 text-xs font-bold uppercase tracking-widest transition ${
+                          bulkFormat === 'pdf'
+                            ? 'border-[#003321] bg-[#003321] text-white'
+                            : 'border-[#003321]/10 bg-white text-[#003321] hover:bg-[#FDFBF7]'
+                        }`}
+                        onClick={() => setBulkFormat('pdf')}
+                        type="button"
+                      >
+                        ZIP as PDF
+                      </button>
+                    </div>
+                  </div>
                   <label className="slider-surface flex cursor-pointer flex-col items-center justify-center rounded-3xl border-2 border-dashed border-[#003321]/10 bg-white p-10 text-center hover:border-[#D30000]/40 hover:bg-[#FDFBF7]/50 md:p-16">
                     <span className="rounded-full bg-[#FDFBF7] px-6 py-4 text-xs font-bold uppercase tracking-widest text-[#003321]/40">Upload CSV</span>
                     <span className="mt-8 text-sm font-bold uppercase tracking-widest">Choose CSV File</span>
-                    <span className="mt-2 text-xs uppercase tracking-widest text-[#003321]/40">Voucher ID, Amount, Order ID</span>
-                    <input accept=".csv" className="sr-only" onChange={(event) => event.target.files?.[0] && void bulkUpload(event.target.files[0])} type="file" />
+                    <span className="mt-2 text-xs uppercase tracking-widest text-[#003321]/40">Voucher ID, Amount, Order ID, then download as {bulkFormat.toUpperCase()}</span>
+                    <input accept=".csv" className="sr-only" onChange={(event) => event.target.files?.[0] && void bulkUpload(event.target.files[0], bulkFormat)} type="file" />
                   </label>
                   {bulk.visible ? (
                     <div className="slider-surface space-y-4 rounded-3xl border border-[#003321]/10 bg-white p-8 shadow-sm">
@@ -538,7 +820,8 @@ export default function App() {
                   <ul className="mt-6 space-y-4 text-xs text-[#003321]/60">
                     <li>1. Use headers: Voucher ID, Amount, Order ID.</li>
                     <li>2. Issued and expiry dates are optional.</li>
-                    <li>3. A ZIP of PNG files downloads automatically.</li>
+                    <li>3. Choose PNG or PDF before uploading the CSV.</li>
+                    <li>4. The generated voucher IDs are copied after export.</li>
                   </ul>
                   <button className={`${buttonClass} mt-8 w-full`} onClick={downloadCsvTemplate} type="button">Download CSV Template</button>
                 </div>
