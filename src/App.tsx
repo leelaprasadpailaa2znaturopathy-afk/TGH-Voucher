@@ -104,7 +104,7 @@ const VOUCHER_LAYOUTS: Record<TemplateKey, VoucherLayout> = {
     referenceWidth: 5500,
     referenceHeight: 3900,
     amountStyle: {
-      fontSize: 200 ,
+      fontSize: 200,
       fontWeight: '1000',
       fontFamily: 'Inter, sans-serif',
       color: 'rgb(255, 255, 255)',
@@ -224,13 +224,20 @@ const drawVoucher = (
   if (data.expiryDate) ctx.fillText(data.expiryDate, layout.expiryDateX, layout.expiryDateY);
 };
 
-const downloadTextFile = (fileName: string, text: string) => {
-  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
+const triggerDownload = (url: string, fileName: string) => {
   const link = document.createElement('a');
   link.href = url;
   link.download = fileName;
+  link.rel = 'noopener';
+  document.body.appendChild(link);
   link.click();
+  window.setTimeout(() => link.remove(), 0);
+};
+
+const downloadTextFile = (fileName: string, text: string) => {
+  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  triggerDownload(url, fileName);
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 };
 
@@ -263,6 +270,16 @@ const badgeClass = (status: Status | AuditStatus) =>
 
 const buttonClass =
   'rounded-xl border border-[#003321]/10 bg-white px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-[#003321] transition hover:bg-[#FDFBF7]';
+const primaryButtonClass =
+  'rounded-xl border border-[#D30000] bg-[#D30000] px-4 py-3 text-[11px] font-black uppercase tracking-widest text-white shadow-[0_16px_40px_rgba(211,0,0,0.22)] transition hover:border-[#b10000] hover:bg-[#b10000] disabled:cursor-not-allowed disabled:opacity-50';
+
+const createDefaultDraft = (): Draft => ({
+  orderId: '',
+  voucherId: '',
+  amount: '',
+  issuedDate: today(),
+  expiryDate: inThirtyDays(),
+});
 
 export default function App() {
   const [view, setView] = useState<View>('dashboard');
@@ -278,13 +295,7 @@ export default function App() {
   const [bulkFormat, setBulkFormat] = useState<BulkFormat>('png');
   const [confirm, setConfirm] = useState<{ title: string; message: string; action: () => void } | null>(null);
   const [bulk, setBulk] = useState({ visible: false, processed: 0, total: 0, percent: 0, status: 'Preparing...' });
-  const [draft, setDraft] = useState<Draft>({
-    orderId: '',
-    voucherId: '',
-    amount: '',
-    issuedDate: today(),
-    expiryDate: inThirtyDays(),
-  });
+  const [draft, setDraft] = useState<Draft>(createDefaultDraft);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const previewViewportRef = useRef<HTMLDivElement | null>(null);
   const activePreviewTemplateKey = getTemplateKey(draft.amount);
@@ -399,16 +410,8 @@ export default function App() {
     voucherData?: Partial<Voucher | Draft>,
   ) => {
     if (format === 'png') {
-      if (voucherIds.length === 1) {
-        await copyVoucherIds(voucherIds);
-        downloadTextFile(fileName.replace(/\.png$/i, '-voucher-id.txt'), `Voucher ID: ${voucherIds[0]}`);
-      } else {
-        await copyVoucherIds(voucherIds);
-      }
-      const link = document.createElement('a');
-      link.download = fileName;
-      link.href = canvas.toDataURL('image/png');
-      link.click();
+      await copyVoucherIds(voucherIds);
+      triggerDownload(canvas.toDataURL('image/png'), fileName);
       return;
     }
     await copyVoucherIds(voucherIds);
@@ -439,6 +442,11 @@ export default function App() {
     setVouchers((current) => [...current, voucher]);
     setLastGenerated(voucher.id);
     addLog('Generate Voucher', voucher.voucherId);
+  };
+
+  const resetDraft = () => {
+    setDraft(createDefaultDraft());
+    setAmountError('');
   };
 
   const downloadVoucher = async (voucher: Voucher, format: 'png' | 'pdf') => {
@@ -581,11 +589,10 @@ export default function App() {
             {nav.map(([key, label]) => (
               <button
                 key={key}
-                className={`shrink-0 rounded-full border px-4 py-2 text-[10px] font-bold uppercase tracking-widest transition ${
-                  view === key
+                className={`shrink-0 rounded-full border px-4 py-2 text-[10px] font-bold uppercase tracking-widest transition ${view === key
                     ? 'border-[#003321] bg-[#003321] text-white'
                     : 'border-[#003321]/10 bg-[#FDFBF7] text-[#003321]/70'
-                }`}
+                  }`}
                 onClick={() => setView(key)}
                 type="button"
               >
@@ -689,7 +696,6 @@ export default function App() {
                   <div className="flex flex-wrap items-center justify-between gap-4">
                     <div>
                       <h2 className="text-3xl font-black tracking-tight">Live Preview</h2>
-                      <p className="mt-2 text-sm text-[#003321]/60">The preview opens zoomed into the right side so the voucher ID area is visible first, and you can scroll across the layout smoothly.</p>
                     </div>
                     <div className="min-w-[220px] flex-1 md:max-w-xs">
                       <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-widest text-[#003321]/50">
@@ -726,15 +732,14 @@ export default function App() {
                   {templateError ? <p className="mt-4 text-sm text-[#D30000]">{templateError}</p> : null}
                   {copyStatus ? <p className="mt-4 text-[11px] font-bold uppercase tracking-widest text-[#003321]/60">{copyStatus}</p> : null}
                   <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <button className={`${buttonClass} ${lastGenerated ? '' : 'cursor-not-allowed opacity-50'}`} disabled={!lastGenerated} onClick={() => downloadCurrent('png')} type="button">Download PNG</button>
-                    <button className={`${buttonClass} ${lastGenerated ? '' : 'cursor-not-allowed opacity-50'}`} disabled={!lastGenerated} onClick={() => downloadCurrent('pdf')} type="button">Download PDF</button>
+                    <button className={primaryButtonClass} disabled={!lastGenerated} onClick={() => downloadCurrent('png')} type="button">Download PNG</button>
+                    <button className={primaryButtonClass} disabled={!lastGenerated} onClick={() => downloadCurrent('pdf')} type="button">Download PDF</button>
                   </div>
                 </div>
               </div>
               <form className="order-2 space-y-6 rounded-3xl border border-[#003321]/10 bg-white p-8 shadow-sm" onSubmit={generateVoucher}>
                 <div>
                   <h2 className="text-3xl font-black tracking-tight">Single Generation</h2>
-                  <p className="mt-2 text-sm text-[#003321]/60">Create a branded voucher with preview and export support that adapts cleanly across mobile and desktop.</p>
                 </div>
                 <Field label="Order ID" value={draft.orderId} onChange={(value) => setDraft((current) => ({ ...current, orderId: value }))} />
                 <Field label="Voucher ID" value={draft.voucherId} onChange={(value) => setDraft((current) => ({ ...current, voucherId: value }))} />
@@ -746,17 +751,7 @@ export default function App() {
                 </div>
                 <div className="flex gap-4">
                   <button className="flex-1 rounded-xl bg-[#003321] px-6 py-4 text-xs font-bold uppercase tracking-widest text-white" type="submit">Generate Voucher</button>
-                  <button
-                    className={buttonClass}
-                    onClick={() => {
-                      const templateKey = getTemplateKey(draft.amount);
-                      const template = getTemplateForAmount(draft.amount);
-                      if (template && canvasRef.current) drawVoucher(canvasRef.current, template, draft, templateKey);
-                    }}
-                    type="button"
-                  >
-                    Preview
-                  </button>
+                  <button className={buttonClass} onClick={resetDraft} type="button">Reset</button>
                 </div>
               </form>
             </div>
@@ -773,22 +768,20 @@ export default function App() {
                     <p className="text-[10px] font-bold uppercase tracking-widest text-[#003321]/40">Bulk Download Format</p>
                     <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
                       <button
-                        className={`rounded-xl border px-4 py-3 text-xs font-bold uppercase tracking-widest transition ${
-                          bulkFormat === 'png'
+                        className={`rounded-xl border px-4 py-3 text-xs font-bold uppercase tracking-widest transition ${bulkFormat === 'png'
                             ? 'border-[#003321] bg-[#003321] text-white'
                             : 'border-[#003321]/10 bg-white text-[#003321] hover:bg-[#FDFBF7]'
-                        }`}
+                          }`}
                         onClick={() => setBulkFormat('png')}
                         type="button"
                       >
                         ZIP as PNG
                       </button>
                       <button
-                        className={`rounded-xl border px-4 py-3 text-xs font-bold uppercase tracking-widest transition ${
-                          bulkFormat === 'pdf'
+                        className={`rounded-xl border px-4 py-3 text-xs font-bold uppercase tracking-widest transition ${bulkFormat === 'pdf'
                             ? 'border-[#003321] bg-[#003321] text-white'
                             : 'border-[#003321]/10 bg-white text-[#003321] hover:bg-[#FDFBF7]'
-                        }`}
+                          }`}
                         onClick={() => setBulkFormat('pdf')}
                         type="button"
                       >
