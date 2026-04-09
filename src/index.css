@@ -1,0 +1,129 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+@layer base {
+  body {
+    @apply bg-[#FDFBF7];
+  }
+}
+
+@layer components {
+  .nav-item {
+    @apply text-[#003321]/60 hover:bg-[#FDFBF7] hover:text-[#003321];
+  }
+  
+  .nav-item.active {
+    @apply bg-[#003321] text-white shadow-lg shadow-[#003321]/20;
+  }
+
+  .nav-item.active i {
+    @apply text-white;
+  }
+
+  .status-badge {
+    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider;
+  }
+
+  .status-badge-active {
+    @apply bg-emerald-50 text-emerald-700 border border-emerald-200;
+  }
+
+  .status-badge-redeemed {
+    @apply bg-amber-50 text-amber-700 border border-amber-200;
+  }
+
+  .slider-surface {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .slider-surface::before {
+    content: "";
+    position: absolute;
+    inset: 0 auto auto 0;
+    height: 3px;
+    width: 100%;
+    background: linear-gradient(90deg, rgba(211, 0, 0, 0), rgba(211, 0, 0, 0.85), rgba(0, 51, 33, 0.85), rgba(211, 0, 0, 0));
+    background-size: 180% 100%;
+    animation: slider-sweep 6s linear infinite;
+    pointer-events: none;
+  }
+
+  .slider-fill {
+    background: linear-gradient(90deg, #d30000, #003321);
+    background-size: 160% 100%;
+    animation: slider-sweep 4s linear infinite;
+  }
+
+  .preview-slider {
+    appearance: none;
+    height: 8px;
+    border-radius: 9999px;
+    background: linear-gradient(90deg, rgba(211, 0, 0, 0.2), rgba(0, 51, 33, 0.35));
+    outline: none;
+  }
+
+  .preview-slider::-webkit-slider-thumb {
+    appearance: none;
+    width: 18px;
+    height: 18px;
+    border-radius: 9999px;
+    background: #003321;
+    border: 3px solid #fdfbf7;
+    box-shadow: 0 4px 14px rgba(0, 51, 33, 0.18);
+    cursor: pointer;
+  }
+
+  .preview-slider::-moz-range-thumb {
+    width: 18px;
+    height: 18px;
+    border-radius: 9999px;
+    background: #003321;
+    border: 3px solid #fdfbf7;
+    box-shadow: 0 4px 14px rgba(0, 51, 33, 0.18);
+    cursor: pointer;
+  }
+
+  /* Custom Scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-[#003321]/10 rounded-full hover:bg-[#003321]/20 transition-colors;
+  }
+}
+
+@keyframes pulse-soft {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+@keyframes slider-sweep {
+  0% { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
+
+.animate-pulse-soft {
+  animation: pulse-soft 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Voucher Preview Text Styles */
+.voucher-text {
+  font-family: 'Inter', sans-serif;
+  font-weight: 700;
+  color: #003321;
+}
+
+.voucher-amount {
+  color: rgba(236, 238, 237, 1);
+}
