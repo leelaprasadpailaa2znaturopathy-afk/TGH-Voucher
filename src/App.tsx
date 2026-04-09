@@ -66,6 +66,7 @@ type VoucherLayout = {
 const STORAGE_KEY = 'the_good_health_vouchers';
 const AUDIT_KEY = 'the_good_health_audit';
 const RUPEE = '\u20b9';
+const VOUCHER_FONT_FAMILY = 'Manrope, sans-serif';
 
 // Manual text-position controls for each voucher template.
 // If you want to fine-tune alignment, update only the numbers in `voucher1k`.
@@ -76,19 +77,19 @@ const VOUCHER_LAYOUTS: Record<TemplateKey, VoucherLayout> = {
     amountStyle: {
       fontSize: 32,
       fontWeight: '800',
-      fontFamily: 'Inter, sans-serif',
+      fontFamily: VOUCHER_FONT_FAMILY,
       color: 'rgba(254, 253, 225, 1)',
     },
     voucherIdStyle: {
       fontSize: 30,
       fontWeight: 'bold',
-      fontFamily: 'Inter, sans-serif',
+      fontFamily: VOUCHER_FONT_FAMILY,
       color: '#003321',
     },
     dateStyle: {
       fontSize: 22,
       fontWeight: 'bold',
-      fontFamily: 'Inter, sans-serif',
+      fontFamily: VOUCHER_FONT_FAMILY,
       color: '#003321',
     },
     amountX: 720,
@@ -106,19 +107,19 @@ const VOUCHER_LAYOUTS: Record<TemplateKey, VoucherLayout> = {
     amountStyle: {
       fontSize: 200,
       fontWeight: '1000',
-      fontFamily: 'Inter, sans-serif',
+      fontFamily: VOUCHER_FONT_FAMILY,
       color: 'rgb(255, 255, 255)',
     },
     voucherIdStyle: {
       fontSize: 180,
       fontWeight: 'bold',
-      fontFamily: 'Inter, sans-serif',
+      fontFamily: VOUCHER_FONT_FAMILY,
       color: '#003321',
     },
     dateStyle: {
       fontSize: 125,
       fontWeight: 'bold',
-      fontFamily: 'Inter, sans-serif',
+      fontFamily: VOUCHER_FONT_FAMILY,
       color: '#003321',
     },
     amountX: 2500,
