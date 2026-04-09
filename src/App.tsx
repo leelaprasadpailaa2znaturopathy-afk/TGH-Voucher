@@ -67,6 +67,8 @@ const STORAGE_KEY = 'the_good_health_vouchers';
 const AUDIT_KEY = 'the_good_health_audit';
 const RUPEE = '\u20b9';
 const VOUCHER_FONT_FAMILY = 'Manrope, sans-serif';
+const PDF_MAX_RENDER_WIDTH = 2200;
+const PDF_IMAGE_QUALITY = 0.72;
 
 // Manual text-position controls for each voucher template.
 // If you want to fine-tune alignment, update only the numbers in `voucher1k`.
@@ -247,17 +249,37 @@ const buildVoucherPdf = (
   voucherData?: Partial<Voucher | Draft>,
   layout?: VoucherLayout,
 ) => {
+  const pdfWidth = Math.min(canvas.width, PDF_MAX_RENDER_WIDTH);
+  const pdfHeight = Math.round((canvas.height * pdfWidth) / canvas.width);
+  const renderScale = pdfWidth / canvas.width;
+  const pdfCanvas = document.createElement('canvas');
+  pdfCanvas.width = pdfWidth;
+  pdfCanvas.height = pdfHeight;
+  const pdfCtx = pdfCanvas.getContext('2d');
+  if (pdfCtx) {
+    pdfCtx.drawImage(canvas, 0, 0, pdfWidth, pdfHeight);
+  }
   const pdf = new jsPDF({
     orientation: 'landscape',
     unit: 'px',
-    format: [canvas.width, canvas.height],
+    format: [pdfWidth, pdfHeight],
+    compress: true,
   });
-  pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, canvas.width, canvas.height);
+  pdf.addImage(
+    pdfCanvas.toDataURL('image/jpeg', PDF_IMAGE_QUALITY),
+    'JPEG',
+    0,
+    0,
+    pdfWidth,
+    pdfHeight,
+    undefined,
+    'FAST',
+  );
   if (voucherData?.voucherId && layout) {
     pdf.setTextColor(0, 51, 33);
     pdf.setFont('helvetica', 'bold');
-    pdf.setFontSize(layout.voucherIdStyle.fontSize);
-    pdf.text(voucherData.voucherId, layout.voucherIdX, layout.voucherIdY, {
+    pdf.setFontSize(layout.voucherIdStyle.fontSize * renderScale);
+    pdf.text(voucherData.voucherId, layout.voucherIdX * renderScale, layout.voucherIdY * renderScale, {
       baseline: 'middle',
     });
   }
