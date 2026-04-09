@@ -6,9 +6,8 @@ import Papa from 'papaparse';
 import templateUrl from './Voucher ID Template TGH (1).png';
 import template1kUrl from './Voucher 1k.png';
 
-type View = 'dashboard' | 'generate' | 'bulk' | 'audit';
+type View = 'dashboard' | 'generate' | 'bulk';
 type Status = 'Active' | 'Redeemed';
-type AuditStatus = 'Success' | 'Failure';
 
 type Voucher = {
   id: string;
@@ -19,15 +18,6 @@ type Voucher = {
   expiryDate: string;
   status: Status;
   createdAt: string;
-};
-
-type AuditLog = {
-  id: string;
-  timestamp: string;
-  actor: string;
-  action: string;
-  resource: string;
-  status: AuditStatus;
 };
 
 type Draft = {
@@ -64,11 +54,11 @@ type VoucherLayout = {
 };
 
 const STORAGE_KEY = 'the_good_health_vouchers';
-const AUDIT_KEY = 'the_good_health_audit';
+const LEGACY_AUDIT_KEY = 'the_good_health_audit';
 const RUPEE = '\u20b9';
 const VOUCHER_FONT_FAMILY = 'Manrope, sans-serif';
-const PDF_MAX_RENDER_WIDTH = 1280;
-const PDF_IMAGE_QUALITY = 0.5;
+const PDF_MAX_RENDER_WIDTH = 1800;
+const PDF_IMAGE_QUALITY = 0.76;
 
 // Manual text-position controls for each voucher template.
 // If you want to fine-tune alignment, update only the numbers in `voucher1k`.
@@ -288,8 +278,8 @@ const buildVoucherPdf = (
   return pdf;
 };
 
-const badgeClass = (status: Status | AuditStatus) =>
-  status === 'Active' || status === 'Success'
+const badgeClass = (status: Status) =>
+  status === 'Active'
     ? 'status-badge status-badge-active'
     : 'status-badge status-badge-redeemed';
 
@@ -311,7 +301,6 @@ export default function App() {
   const [query, setQuery] = useState('');
   const [previewZoom, setPreviewZoom] = useState(135);
   const [vouchers, setVouchers] = useState<Voucher[]>(() => readJson(STORAGE_KEY, []));
-  const [logs, setLogs] = useState<AuditLog[]>(() => readJson(AUDIT_KEY, []));
   const [templates, setTemplates] = useState<TemplateMap | null>(null);
   const [templateError, setTemplateError] = useState('');
   const [amountError, setAmountError] = useState('');
@@ -330,8 +319,8 @@ export default function App() {
   }, [vouchers]);
 
   useEffect(() => {
-    window.localStorage.setItem(AUDIT_KEY, JSON.stringify(logs));
-  }, [logs]);
+    window.localStorage.removeItem(LEGACY_AUDIT_KEY);
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -372,13 +361,6 @@ export default function App() {
 
     return () => window.cancelAnimationFrame(frame);
   }, [activePreviewTemplateKey, templates, view]);
-
-  const addLog = (action: string, resource: string, status: AuditStatus = 'Success') => {
-    setLogs((current) => [
-      ...current,
-      { id: crypto.randomUUID(), timestamp: new Date().toISOString(), actor: 'System', action, resource, status },
-    ]);
-  };
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -466,7 +448,6 @@ export default function App() {
     setAmountError('');
     setVouchers((current) => [...current, voucher]);
     setLastGenerated(voucher.id);
-    addLog('Generate Voucher', voucher.voucherId);
   };
 
   const resetDraft = () => {
@@ -478,7 +459,6 @@ export default function App() {
     const canvas = makeCanvas(voucher, { includeVoucherId: format !== 'pdf' });
     if (!canvas) return;
     await downloadCanvas(canvas, `${voucher.orderId}.${format}`, format, [voucher.voucherId], voucher);
-    addLog(`Download ${format.toUpperCase()}`, voucher.voucherId);
   };
 
   const downloadCurrent = async (format: 'png' | 'pdf') => {
@@ -554,7 +534,6 @@ export default function App() {
       if (i % 10 === 0) await new Promise((resolve) => setTimeout(resolve, 0));
     }
     setVouchers((current) => [...current, ...generated]);
-    addLog(`Bulk Generate ${format.toUpperCase()}`, `${generated.length} Vouchers`);
     setBulk((current) => ({ ...current, status: 'Packaging ZIP...' }));
     const content = await zip.generateAsync({ type: 'blob' });
     const url = URL.createObjectURL(content);
@@ -572,7 +551,6 @@ export default function App() {
     ['dashboard', 'Dashboard'],
     ['generate', 'Single Generation'],
     ['bulk', 'Bulk Operations'],
-    ['audit', 'Audit Logs'],
   ] as const;
 
   return (
@@ -599,15 +577,16 @@ export default function App() {
         <header className="flex h-auto min-h-20 flex-wrap items-center justify-between gap-4 border-b border-[#003321]/10 bg-white px-6 py-4 md:px-10">
           <div className="flex items-center gap-4">
             <h1 className="text-xl font-bold">{view.charAt(0).toUpperCase() + view.slice(1)}</h1>
-            <div className="rounded-full bg-emerald-50 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-emerald-700">System Online</div>
           </div>
-          <input
-            className="h-10 w-full rounded-full border border-[#003321]/10 bg-[#FDFBF7] px-4 text-sm outline-none sm:max-w-xs lg:w-64"
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search vouchers..."
-            type="text"
-            value={query}
-          />
+          {view === 'dashboard' ? (
+            <input
+              className="h-10 w-full rounded-full border border-[#003321]/10 bg-[#FDFBF7] px-4 text-sm outline-none sm:max-w-xs lg:w-64"
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search vouchers..."
+              type="text"
+              value={query}
+            />
+          ) : null}
         </header>
         <div className="border-b border-[#003321]/10 bg-white/80 px-4 py-3 md:hidden">
           <div className="flex gap-2 overflow-x-auto pb-1">
@@ -647,7 +626,6 @@ export default function App() {
                           message: 'Are you sure you want to delete all vouchers? This action cannot be undone.',
                           action: () => {
                             setVouchers([]);
-                            addLog('Clear All Vouchers', 'All');
                           },
                         })
                       }
@@ -662,10 +640,14 @@ export default function App() {
                 </div>
                 {filtered.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-20 text-center">
-                    <div className="rounded-full bg-[#FDFBF7] px-6 py-4 text-sm font-bold text-[#003321]/40">No vouchers yet</div>
-                    <button className="mt-6 text-[10px] font-bold uppercase tracking-widest text-[#D30000]" onClick={() => setView('generate')} type="button">
-                      Start Generating
-                    </button>
+                    <div className="rounded-full bg-[#FDFBF7] px-6 py-4 text-sm font-bold text-[#003321]/40">
+                      {query.trim() ? 'No vouchers match your search' : 'No vouchers yet'}
+                    </div>
+                    {!query.trim() ? (
+                      <button className="mt-6 text-[10px] font-bold uppercase tracking-widest text-[#D30000]" onClick={() => setView('generate')} type="button">
+                        Start Generating
+                      </button>
+                    ) : null}
                   </div>
                 ) : (
                   <div className="overflow-x-auto">
@@ -698,7 +680,6 @@ export default function App() {
                                       message: `Are you sure you want to delete voucher ${voucher.voucherId}?`,
                                       action: () => {
                                         setVouchers((current) => current.filter((item) => item.id !== voucher.id));
-                                        addLog('Delete Voucher', voucher.voucherId);
                                       },
                                     })
                                   }
@@ -842,47 +823,6 @@ export default function App() {
                     <li>4. The generated voucher IDs are copied after export.</li>
                   </ul>
                   <button className={`${buttonClass} mt-8 w-full`} onClick={downloadCsvTemplate} type="button">Download CSV Template</button>
-                </div>
-              </div>
-            </div>
-          ) : null}
-          {view === 'audit' ? (
-            <div className="space-y-8">
-              <div className="flex flex-wrap items-center justify-between gap-4">
-                <div>
-                  <h2 className="text-3xl font-black tracking-tight">Audit Logs</h2>
-                  <p className="mt-2 text-sm text-[#003321]/60">Immutable record of voucher operations and system changes.</p>
-                </div>
-                <button
-                  className={`${buttonClass} border-[#D30000]/20 text-[#D30000] hover:bg-red-50`}
-                  onClick={() => setConfirm({ title: 'Clear Audit Logs', message: 'Are you sure you want to clear all audit logs?', action: () => setLogs([]) })}
-                  type="button"
-                >
-                  Clear Logs
-                </button>
-              </div>
-              <div className="slider-surface overflow-hidden rounded-2xl border border-[#003321]/10 bg-white shadow-sm">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left">
-                    <thead>
-                      <tr className="border-b border-[#003321]/5 bg-[#FDFBF7]/10">
-                        {['Timestamp', 'Actor', 'Action', 'Resource', 'Status'].map((item) => (
-                          <th key={item} className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-[#003321]/40">{item}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-[#003321]/5">
-                      {logs.slice().reverse().map((log) => (
-                        <tr key={log.id} className="hover:bg-[#FDFBF7]/50">
-                          <td className="px-6 py-4 text-[10px] font-mono text-[#003321]/40">{new Date(log.timestamp).toLocaleString()}</td>
-                          <td className="px-6 py-4 text-xs font-bold">{log.actor}</td>
-                          <td className="px-6 py-4 text-xs">{log.action}</td>
-                          <td className="px-6 py-4 text-xs font-mono text-[#003321]/60">{log.resource}</td>
-                          <td className="px-6 py-4"><span className={badgeClass(log.status)}>{log.status}</span></td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
                 </div>
               </div>
             </div>
